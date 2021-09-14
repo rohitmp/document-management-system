@@ -23,6 +23,7 @@ package com.openkm.frontend.client.widget.findfolder;
 
 import com.google.gwt.core.client.GWT;
 import com.google.gwt.event.dom.client.*;
+import com.google.gwt.safehtml.shared.SafeHtmlUtils;
 import com.google.gwt.user.client.Window;
 import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
@@ -41,6 +42,9 @@ import java.util.Iterator;
 public class FindFolderSelectPopup extends DialogBox {
 	private final OKMSearchServiceAsync searchService = (OKMSearchServiceAsync) GWT.create(OKMSearchService.class);
 
+	public static final int ORIGIN_DEFAULT = 1;
+	public static final int ORIGIN_MAIL_EDITOR = 2; // Used in okm_mail_tiny_mce
+
 	private VerticalPanel vPanel;
 	private HorizontalPanel hPanel;
 	public ScrollPanel scrollFolderPanel;
@@ -50,6 +54,7 @@ public class FindFolderSelectPopup extends DialogBox {
 	private TextBox keyword;
 	private FlexTable folderTable;
 	private int selectedRow = -1;
+	private int type = ORIGIN_DEFAULT;
 
 	public FindFolderSelectPopup() {
 		// Establishes auto-close when click outside
@@ -76,8 +81,11 @@ public class FindFolderSelectPopup extends DialogBox {
 		actionButton = new Button(Main.i18n("search.result.menu.go.folder"), new ClickHandler() {
 			@Override
 			public void onClick(ClickEvent event) {
-				CommonUI.openPath(folderTable.getText(selectedRow, 1), "");
-				hide();
+				// Escape special html characters to match with UserObject's path
+				String fldPath = SafeHtmlUtils.htmlEscape(folderTable.getText(selectedRow, 1));
+				String uuid = folderTable.getText(selectedRow, 2);
+				String name = Util.getName(fldPath);
+				addFolder(fldPath, uuid, name);
 			}
 		});
 
@@ -146,8 +154,11 @@ public class FindFolderSelectPopup extends DialogBox {
 		folderTable.addDoubleClickHandler(new DoubleClickHandler() {
 			@Override
 			public void onDoubleClick(DoubleClickEvent event) {
-				CommonUI.openPath(folderTable.getText(selectedRow, 1), "");
-				hide();
+				// Escape special html characters to match with UserObject's path
+				String fldPath = SafeHtmlUtils.htmlEscape(folderTable.getText(selectedRow, 1));
+				String uuid = folderTable.getText(selectedRow, 2);
+				String name = Util.getName(fldPath);
+				addFolder(fldPath, uuid, name);
 			}
 		});
 
@@ -183,6 +194,27 @@ public class FindFolderSelectPopup extends DialogBox {
 	}
 
 	/**
+	 * addFolder
+	 */
+	public void addFolder(String fldPath, String uuid, String name) {
+		boolean hide = true;
+		switch (type) {
+			case ORIGIN_DEFAULT:
+				CommonUI.openPath(fldPath, "");
+				break;
+
+			case ORIGIN_MAIL_EDITOR:
+				//String url = Main.get().workspaceUserProperties.getApplicationURL() + "?uuid=" + uuid;
+				addFolderToMailEditor(uuid, name);
+				break;
+		}
+
+		if (hide) {
+			hide();
+		}
+	}
+
+	/**
 	 * Language refresh
 	 */
 	public void langRefresh() {
@@ -192,14 +224,24 @@ public class FindFolderSelectPopup extends DialogBox {
 	}
 
 	/**
-	 * Shows the popup 
+	 * Shows the popup
 	 */
-	public void show() {
+	public void show(int type) {
+		this.type = type;
 		initButtons();
 		int left = (Window.getClientWidth() - 700) / 2;
 		int top = (Window.getClientHeight() - 350) / 2;
 		setPopupPosition(left, top);
 		setText(Main.i18n("search.folder.filter"));
+
+		switch (type) {
+			case ORIGIN_DEFAULT:
+				actionButton.setText(Main.i18n("search.result.menu.go.folder"));
+				break;
+			default:
+				actionButton.setText(Main.i18n("button.select"));
+				break;
+		}
 
 		// Resets to initial tree value
 		removeAllRows();
@@ -254,7 +296,7 @@ public class FindFolderSelectPopup extends DialogBox {
 	/**
 	 * Change the style row selected or unselected
 	 *
-	 * @param row The row afected
+	 * @param row      The row afected
 	 * @param selected Indicates selected unselected row
 	 */
 	private void styleRow(int row, boolean selected) {
@@ -305,7 +347,9 @@ public class FindFolderSelectPopup extends DialogBox {
 					}
 
 					folderTable.setHTML(rows, 1, folder.getPath());
+					folderTable.setHTML(rows, 2, folder.getUuid());
 					folderTable.getCellFormatter().setWidth(rows, 0, "30px");
+					folderTable.getCellFormatter().setVisible(rows, 2, false);
 					folderTable.getCellFormatter().setHorizontalAlignment(rows, 0, HasHorizontalAlignment.ALIGN_CENTER);
 				}
 			}
@@ -326,4 +370,29 @@ public class FindFolderSelectPopup extends DialogBox {
 		status.setFlagChilds();
 		searchService.find(params, callbackFind);
 	}
+
+	/**
+	 * showFindFolder
+	 */
+	public void showFindFolder(String option) {
+		show(Integer.valueOf(option));
+	}
+
+	/**
+	 * addFolderToMailEditor
+	 */
+	public static native void addFolderToMailEditor(String uuid, String name) /*-{
+		new $wnd.addFolderToMailEditor(uuid, name);
+	}-*/;
+
+
+	/**
+	 * initJavaScriptApi
+	 */
+	public native void initJavaScriptApi(FindFolderSelectPopup findFolderSelectPopup) /*-{
+		$wnd.jsSearchFolderPopup = function (s) {
+			findFolderSelectPopup.@com.openkm.frontend.client.widget.findfolder.FindFolderSelectPopup::showFindFolder(Ljava/lang/String;)(s);
+			return true;
+		}
+	}-*/;
 }

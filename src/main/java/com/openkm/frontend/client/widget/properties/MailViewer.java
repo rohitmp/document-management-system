@@ -20,6 +20,7 @@
  */
 package com.openkm.frontend.client.widget.properties;
 
+import com.google.gwt.core.client.GWT;
 import com.google.gwt.dom.client.NativeEvent;
 import com.google.gwt.dom.client.Style.Display;
 import com.google.gwt.event.dom.client.ClickEvent;
@@ -30,28 +31,32 @@ import com.google.gwt.event.logical.shared.CloseEvent;
 import com.google.gwt.event.logical.shared.CloseHandler;
 import com.google.gwt.i18n.client.DateTimeFormat;
 import com.google.gwt.user.client.Window;
+import com.google.gwt.user.client.rpc.AsyncCallback;
 import com.google.gwt.user.client.ui.*;
 import com.google.gwt.user.client.ui.HTMLTable.CellFormatter;
 import com.openkm.frontend.client.Main;
 import com.openkm.frontend.client.bean.GWTDocument;
 import com.openkm.frontend.client.bean.GWTMail;
+import com.openkm.frontend.client.service.OKMMailService;
+import com.openkm.frontend.client.service.OKMMailServiceAsync;
 import com.openkm.frontend.client.util.OKMBundleResources;
 import com.openkm.frontend.client.util.Util;
 import com.openkm.frontend.client.widget.foldertree.FolderSelectPopup;
 import com.openkm.frontend.client.widget.properties.attachment.AttachmentMenuPopup;
 import com.openkm.frontend.client.widget.properties.mail.MailMenuPopup;
+import com.openkm.frontend.client.widget.util.AttachmentHandler;
+import com.openkm.frontend.client.widget.util.WidgetUtil;
 
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.List;
 
 /**
  * MailViewer
  *
  * @author jllort
- *
  */
 public class MailViewer extends Composite {
+	private static final OKMMailServiceAsync mailService = (OKMMailServiceAsync) GWT.create(OKMMailService.class);
+
 	private static final int DATA_TABLE_HEIGHT = 125;
 	private static final int DATA_TABLE_MINIMUM_WIDTH = 300;
 	private FlexTable table;
@@ -73,9 +78,8 @@ public class MailViewer extends Composite {
 	private HTML sendReceivedText;
 	private HTML sendReceivedValue;
 	private FlowPanel replyPanel;
-	public AttachmentMenuPopup attamentMenuPopup;
+	public AttachmentMenuPopup attachmentMenuPopup;
 	public MailMenuPopup optionsMenuPopup;
-	private Map<Integer, GWTDocument> attachmentsList;
 	private GWTMail mail;
 	private GWTDocument selectedAttachment = null;
 	private Button selectedButton = null;
@@ -98,15 +102,14 @@ public class MailViewer extends Composite {
 		table = new FlexTable();
 		dataTable = new FlexTable();
 		contentPanel = new HorizontalPanel();
-		attamentMenuPopup = new AttachmentMenuPopup();
-		attamentMenuPopup.addCloseHandler(new CloseHandler<PopupPanel>() {
+		attachmentMenuPopup = new AttachmentMenuPopup();
+		attachmentMenuPopup.addCloseHandler(new CloseHandler<PopupPanel>() {
 			@Override
 			public void onClose(CloseEvent<PopupPanel> event) {
-				unselectAttachment();
+				deselectAttachment();
 			}
 		});
 		optionsMenuPopup = new MailMenuPopup();
-		attachmentsList = new HashMap<Integer, GWTDocument>();
 
 		options = new Image(OKMBundleResources.INSTANCE.options());
 		options.setTitle(Main.i18n("general.options"));
@@ -259,7 +262,7 @@ public class MailViewer extends Composite {
 
 		dataTable.setStyleName("okm-DisableSelect");
 		table.setStyleName("okm-Mail");
-		attamentMenuPopup.setStyleName("okm-MenuPopup");
+		attachmentMenuPopup.setStyleName("okm-MenuPopup");
 		optionsMenuPopup.setStyleName("okm-MenuPopup");
 
 		initWidget(table);
@@ -295,10 +298,10 @@ public class MailViewer extends Composite {
 	/**
 	 * Set the WordWarp for all the row cells
 	 *
-	 * @param row The row cell
+	 * @param row     The row cell
 	 * @param columns Number of row columns
 	 * @param warp
-	 * @param table The table to change word wrap
+	 * @param table   The table to change word wrap
 	 */
 	private void setRowWordWarp(int row, int columns, boolean warp, FlexTable table) {
 		CellFormatter cellFormatter = table.getCellFormatter();
@@ -323,19 +326,24 @@ public class MailViewer extends Composite {
 	 */
 	public void set(GWTMail mail) {
 		this.mail = mail;
-
 		Anchor hFrom = new Anchor();
-		final String mailFrom = mail.getFrom().contains("<") ? mail.getFrom().substring(mail.getFrom().indexOf("<") + 1, mail.getFrom().indexOf(">")) : mail.getFrom();
-		hFrom.setHTML(mail.getFrom().replace("<", "&lt;").replace(">", "&gt;"));
-		hFrom.setTitle("mailto:" + mailFrom);
+
+		if (mail.getFrom() != null) {
+			final String mailFrom = mail.getFrom().contains("<") ? mail.getFrom().substring(mail.getFrom().indexOf("<") + 1, mail.getFrom().indexOf(">")) : mail.getFrom();
+			hFrom.setHTML(mail.getFrom().replace("<", "&lt;").replace(">", "&gt;"));
+			hFrom.setTitle("mailto:" + mailFrom);
+			hFrom.addClickHandler(new ClickHandler() {
+				@Override
+				public void onClick(ClickEvent event) {
+					Window.open("mailto:" + mailFrom, "_blank", "");
+				}
+			});
+		} else {
+			hFrom.setHTML("");
+		}
+
 		hFrom.setStyleName("okm-Mail-Link");
 		hFrom.addStyleName("okm-NoWrap");
-		hFrom.addClickHandler(new ClickHandler() {
-			@Override
-			public void onClick(ClickEvent event) {
-				Window.open("mailto:" + mailFrom, "_blank", "");
-			}
-		});
 		dataTable.setWidget(rowFrom, 1, hFrom);
 
 		dataTable.setHTML(rowSubject, 1, mail.getSubject());
@@ -343,22 +351,34 @@ public class MailViewer extends Composite {
 
 		toPanel.clear();
 		for (String mailTo : mail.getTo()) {
-			toPanel.add(getMailWidget(mailTo, toPanel));
+			if (toPanel.getWidgetCount() > 0) {
+				toPanel.add(WidgetUtil.getSpace());
+			}
+			toPanel.add(WidgetUtil.getMailWidget(mailTo));
 		}
 
 		ccPanel.clear();
 		for (String mailCC : mail.getCc()) {
-			ccPanel.add(getMailWidget(mailCC, ccPanel));
+			if (ccPanel.getWidgetCount() > 0) {
+				ccPanel.add(WidgetUtil.getSpace());
+			}
+			ccPanel.add(WidgetUtil.getMailWidget(mailCC));
 		}
 
 		bccPanel.clear();
 		for (String mailBCC : mail.getBcc()) {
-			bccPanel.add(getMailWidget(mailBCC, bccPanel));
+			if (bccPanel.getWidgetCount() > 0) {
+				bccPanel.add(WidgetUtil.getSpace());
+			}
+			bccPanel.add(WidgetUtil.getMailWidget(mailBCC));
 		}
 
 		replyPanel.clear();
 		for (String mailReply : mail.getReply()) {
-			replyPanel.add(getMailWidget(mailReply, replyPanel));
+			if (replyPanel.getWidgetCount() > 0) {
+				replyPanel.add(WidgetUtil.getSpace());
+			}
+			replyPanel.add(WidgetUtil.getMailWidget(mailReply));
 		}
 
 		sizeValue.setHTML(Util.formatSize(mail.getSize()));
@@ -376,15 +396,41 @@ public class MailViewer extends Composite {
 		dataTable.getFlexCellFormatter().setStyleName(rowExtra, 1, "okm-EnableSelect");
 		dataTable.getFlexCellFormatter().setStyleName(rowReply, 1, "okm-EnableSelect");
 
-		attachmentsList = new HashMap<Integer, GWTDocument>();
-		int count = 0;
-
 		attachmentsPanel.clear();
-		for (Iterator<GWTDocument> it = mail.getAttachments().iterator(); it.hasNext(); ) {
-			final GWTDocument attach = it.next();
-			attachmentsList.put(new Integer(count), attach);
-			count++;
-			attachmentsPanel.add(getAttachmentWidget(attach));
+		if (mail.isHasAttachments()) {
+			mailService.getAttachments(mail.getUuid(), new AsyncCallback<List<GWTDocument>>() {
+				@Override
+				public void onSuccess(List<GWTDocument> result) {
+					for (final GWTDocument attach : result) {
+						if (attachmentsPanel.getWidgetCount() > 0) {
+							attachmentsPanel.add(WidgetUtil.getSpace());
+						}
+						attachmentsPanel.add(WidgetUtil.getAttachmentWidget(attach, new AttachmentHandler() {
+							@Override
+							public void onAttachmentMouseDown(MouseDownEvent event, GWTDocument attach, Button button) {
+								int buttonPressed = event.getNativeEvent().getButton();
+								if (buttonPressed == NativeEvent.BUTTON_RIGHT) {
+									deselectAttachment();
+									selectedAttachment = attach;
+									selectedButton = button;
+									button.addStyleName("okm-Button-Mail-selected");
+									event.preventDefault();
+									event.stopPropagation();
+									int mouseX = event.getClientX();
+									int mouseY = event.getClientY();
+									attachmentMenuPopup.setPopupPosition(mouseX, mouseY);
+									attachmentMenuPopup.show(attach);
+								}
+							}
+						}));
+					}
+				}
+
+				@Override
+				public void onFailure(Throwable caught) {
+					Main.get().showError("getAttachments", caught);
+				}
+			});
 		}
 	}
 
@@ -409,64 +455,9 @@ public class MailViewer extends Composite {
 	}
 
 	/**
-	 * getAttachmentWidget
+	 * deselectAttachment
 	 */
-	private Button getAttachmentWidget(final GWTDocument attach) {
-		String html = Util.mimeImageHTML(attach.getMimeType()) + "<span>" + attach.getName() + " (" + Util.formatSize(attach.getActualVersion().getSize()) + ")</span>";
-		final Button button = new Button();
-		button.setHTML(html);
-		button.setTitle(attach.getName());
-		button.setStyleName("okm-Button-Mail");
-		button.addClickHandler(new ClickHandler() {
-			@Override
-			public void onClick(ClickEvent event) {
-				Util.downloadFileByUUID(attach.getUuid(), "");
-			}
-		});
-		button.addMouseDownHandler(new MouseDownHandler() {
-			@Override
-			public void onMouseDown(MouseDownEvent event) {
-				int buttonPressed = event.getNativeEvent().getButton();
-				if (buttonPressed == NativeEvent.BUTTON_RIGHT) {
-					unselectAttachment();
-					selectedAttachment = attach;
-					selectedButton = button;
-					button.addStyleName("okm-Button-Mail-selected");
-					event.preventDefault();
-					event.stopPropagation();
-					int mouseX = event.getClientX();
-					int mouseY = event.getClientY();
-					Main.get().mainPanel.desktop.browser.tabMultiple.tabMail.mailViewer.attamentMenuPopup.setPopupPosition(mouseX, mouseY);
-					Main.get().mainPanel.desktop.browser.tabMultiple.tabMail.mailViewer.attamentMenuPopup.show();
-				}
-			}
-		});
-		return button;
-	}
-
-	/**
-	 * getMailWidget
-	 */
-	private Button getMailWidget(final String mail, FlowPanel flowPanel) {
-		final Button button = new Button();
-		final String mailTo = mail.contains("<") ? mail.substring(mail.indexOf("<") + 1, mail.indexOf(">")).trim() : mail.trim();
-		String mailHTML = mail.trim().replace("<", "&lt;").replace(">", "&gt;");
-		button.setHTML(mailHTML);
-		button.setTitle(mailHTML);
-		button.setStyleName("okm-Button-Mail");
-		button.addClickHandler(new ClickHandler() {
-			@Override
-			public void onClick(ClickEvent event) {
-				Window.open("mailto:" + mailTo, "_blank", "");
-			}
-		});
-		return button;
-	}
-
-	/**
-	 * unselectAttachment
-	 */
-	public void unselectAttachment() {
+	public void deselectAttachment() {
 		if (selectedButton != null) {
 			selectedButton.removeStyleName("okm-Button-Mail-selected");
 		}
@@ -554,6 +545,7 @@ public class MailViewer extends Composite {
 		sendTextText.setHTML("<b>" + Main.i18n("mail.date.send") + "</b>");
 		sendReceivedText.setHTML("<b>" + Main.i18n("mail.date.received") + "</b>");
 		options.setTitle(Main.i18n("general.options"));
-		attamentMenuPopup.langRefresh();
+		optionsMenuPopup.langRefresh();
+		attachmentMenuPopup.langRefresh();
 	}
 }

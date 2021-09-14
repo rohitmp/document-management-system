@@ -106,10 +106,10 @@ public class MailResource implements CopyableResource, DeletableResource, Getabl
 
 	@Override
 	public String getContentType(String accepts) {
-		if (mail.getAttachments().isEmpty()) {
-			return mail.getMimeType();
-		} else {
+		if (mail.isHasAttachments()) {
 			return "message/rfc822";
+		} else {
+			return mail.getMimeType();
 		}
 	}
 
@@ -127,12 +127,12 @@ public class MailResource implements CopyableResource, DeletableResource, Getabl
 			String fixedMailPath = ResourceUtils.fixRepositoryPath(mail.getPath());
 			Mail mail = OKMMail.getInstance().getProperties(null, fixedMailPath);
 
-			if (mail.getAttachments().isEmpty()) {
-				IOUtils.write(mail.getContent(), out);
-			} else {
+			if (mail.isHasAttachments()) {
 				MimeMessage m = MailUtils.create(null, mail);
 				m.writeTo(out);
 				out.flush();
+			} else {
+				IOUtils.write(mail.getContent(), out);
 			}
 		} catch (PathNotFoundException e) {
 			log.error("PathNotFoundException: " + e.getMessage(), e);
@@ -150,9 +150,9 @@ public class MailResource implements CopyableResource, DeletableResource, Getabl
 			log.error("MessagingException: " + e.getMessage(), e);
 			throw new RuntimeException("Failed to update content: " + mail.getPath());
 		} catch (LockException e) {
-            log.error("LockException: " + e.getMessage(), e);
-            throw new RuntimeException("Failed to update content: " + mail.getPath());
-        }
+			log.error("LockException: " + e.getMessage(), e);
+			throw new RuntimeException("Failed to update content: " + mail.getPath());
+		}
 	}
 
 	@Override
