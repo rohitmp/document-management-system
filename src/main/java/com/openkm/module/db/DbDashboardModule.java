@@ -58,6 +58,7 @@ public class DbDashboardModule implements DashboardModule {
 	private static final String CACHE_DASHBOARD_USER_MAILS = "com.openkm.cache.dashboardUserMails";
 	private static final String CACHE_DASHBOARD_USER_DOCUMENTS = "com.openkm.cache.dashboardUserDocuments";
 	private static final String CACHE_DASHBOARD_TOP_DOCUMENTS = "com.openkm.cache.dashboardTopDocuments";
+	private static final String CACHE_DASHBOARD_TOP_FOLDERS = "com.openkm.cache.dashboardTopFolders";
 
 	@Override
 	public List<DashboardDocumentResult> getUserLockedDocuments(String token) throws AccessDeniedException, RepositoryException,
@@ -900,6 +901,50 @@ public class DbDashboardModule implements DashboardModule {
 	}
 
 	@Override
+	public List<DashboardDocumentResult> getLastCreatedDocuments(String token) throws AccessDeniedException, RepositoryException,
+			DatabaseException {
+		log.debug("getLastCreatedDocuments({})", token);
+
+		try {
+			if (token != null) {
+				SecurityHolder.set(PrincipalUtils.getAuthenticationByToken(token));
+			}
+
+			List<DashboardDocumentResult> al = getLastCreatedDocumentsSrv(PrincipalUtils.getUser());
+			log.debug("getLastCreatedDocuments: {}", al);
+			return al;
+		} finally {
+			if (token != null) {
+				SecurityHolder.unset();
+			}
+		}
+	}
+
+	/**
+	 * Convenient method for syndication
+	 */
+	public List<DashboardDocumentResult> getLastCreatedDocumentsSrv(String user) throws AccessDeniedException, RepositoryException,
+			DatabaseException {
+		log.debug("getLastCreatedDocumentsSrv({})", user);
+		long begin = System.currentTimeMillis();
+		// @formatter:off
+		String qs = "select distinct a.item, max(a.date) from DashboardActivity a " +
+				"where (a.action='CREATE_DOCUMENT' or a.action='COPY_DOCUMENT') and a.path like '/" + Repository.ROOT + "/%' " +
+				"group by a.item " +
+				"order by max(a.date) desc";
+		// @formatter:on
+		final String SOURCE = "LastCreatedDocuments";
+		List<DashboardDocumentResult> al = getTopDocuments(user, SOURCE, qs, null);
+
+		// Check for already visited results
+		checkVisitedDocuments(user, SOURCE, al);
+		SystemProfiling.log(user, System.currentTimeMillis() - begin);
+		log.trace("getLastCreatedDocumentsSrv.Time: {}", System.currentTimeMillis() - begin);
+		log.debug("getLastCreatedDocumentsSrv: {}", al);
+		return al;
+	}
+
+	@Override
 	public List<DashboardDocumentResult> getLastUploadedDocuments(String token) throws AccessDeniedException, RepositoryException,
 			DatabaseException {
 		log.debug("getLastUploadedDocuments({})", token);
@@ -1017,6 +1062,120 @@ public class DbDashboardModule implements DashboardModule {
 		return results;
 	}
 
+	@Override
+	public List<DashboardFolderResult> getLastCreatedFolders(String token) throws AccessDeniedException, RepositoryException, DatabaseException {
+		log.debug("getLastCreatedFolders({})", token);
+
+		try {
+			if (token != null) {
+				SecurityHolder.set(PrincipalUtils.getAuthenticationByToken(token));
+			}
+
+			List<DashboardFolderResult> al = getLastCreatedFoldersSrv(PrincipalUtils.getUser());
+			log.debug("getLastCreatedFolders: {}", al);
+			return al;
+		} finally {
+			if (token != null) {
+				SecurityHolder.unset();
+			}
+		}
+	}
+
+	/**
+	 * Convenient method for syndication
+	 */
+	public List<DashboardFolderResult> getLastCreatedFoldersSrv(String user) throws RepositoryException, DatabaseException {
+		log.debug("getLastCreatedFoldersSrv({})", user);
+		long begin = System.currentTimeMillis();
+		// @formatter:off
+		String qs = "select distinct a.item, max(a.date) from DashboardActivity a " +
+				"where a.action='CREATE_FOLDER' and a.path like '/" + Repository.ROOT + "/%' " +
+				"group by a.item " +
+				"order by max(a.date) desc";
+		// @formatter:on
+		final String SOURCE = "LastCreatedFolders";
+		List<DashboardFolderResult> al = getTopFolders(user, SOURCE, qs, null);
+
+		// Check for already visited results
+		checkVisitedFolders(user, SOURCE, al);
+		SystemProfiling.log(user, System.currentTimeMillis() - begin);
+		log.trace("getLastCreatedFoldersSrv.Time: {}", System.currentTimeMillis() - begin);
+		log.debug("getLastCreatedFoldersSrv: {}", al);
+		return al;
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<DashboardFolderResult> getTopFolders(String user, String source, String qs, Calendar date)
+			throws RepositoryException, DatabaseException {
+		log.debug("getTopFolders({}, {}, {}, {})", new Object[]{user, source, qs, (date != null ? date.getTime() : "null")});
+		List<DashboardFolderResult> al = new ArrayList<>();
+		Cache fldResultCache = CacheProvider.getInstance().getCache(CACHE_DASHBOARD_TOP_FOLDERS);
+		String key = source + ":" + user;
+		Element elto = fldResultCache.get(key);
+
+		if (elto != null) {
+			log.debug("Get '{}' from cache", source);
+			List<DashboardFolderResult> cachedResults = (List<DashboardFolderResult>) elto.getValue();
+			al = allowedCachedFolderResults(cachedResults);
+		} else {
+			log.debug("Get '{}' from database", source);
+			Session session = null;
+			int cont = 0;
+
+			try {
+				session = HibernateUtil.getSessionFactory().openSession();
+				Query q = session.createQuery(qs).setFetchSize(MAX_RESULTS);
+
+				if (date != null) {
+					q.setCalendar("date", date);
+				}
+
+				// While there is more query results and the MAX_RESULT limit has reached
+				for (Iterator<Object[]> it = q.iterate(); it.hasNext() && cont < MAX_RESULTS; cont++) {
+					Object[] obj = it.next();
+					String resItem = (String) obj[0];
+					Calendar resDate = (Calendar) obj[1];
+
+					try {
+						NodeFolder nFld = NodeFolderDAO.getInstance().findByPk(resItem);
+						// String docPath = NodeBaseDAO.getInstance().getPathFromUuid(nDoc.getUuid());
+
+						// Only documents from taxonomy
+						// Already filtered in the query
+						// if (docPath.startsWith("/okm:root")) {
+						Folder fld = BaseFolderModule.getProperties(user, nFld);
+						DashboardFolderResult vo = new DashboardFolderResult();
+						vo.setFolder(fld);
+						vo.setDate(resDate);
+						vo.setVisited(false);
+						al.add(vo);
+						// }
+					} catch (PathNotFoundException e) {
+						// Do nothing
+					}
+				}
+
+				fldResultCache.put(new Element(key, al));
+			} catch (HibernateException e) {
+				throw new DatabaseException(e.getMessage(), e);
+			} finally {
+				HibernateUtil.close(session);
+			}
+		}
+
+		log.debug("getTopFolders: {}", al);
+		return al;
+	}
+
+	private List<DashboardFolderResult> allowedCachedFolderResults(List<DashboardFolderResult> list) throws DatabaseException {
+		List<DashboardFolderResult> results = new ArrayList<>(list.size());
+		for (DashboardFolderResult result : list) {
+			if (NodeFolderDAO.getInstance().itemExists(result.getFolder().getUuid())) {
+				results.add(result);
+			}
+		}
+		return results;
+	}
 	@Override
 	public void visiteNode(String token, String source, String node, Calendar date) throws AccessDeniedException, RepositoryException,
 			DatabaseException {

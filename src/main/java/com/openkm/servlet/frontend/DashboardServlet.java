@@ -675,6 +675,92 @@ public class DashboardServlet extends OKMRemoteServiceServlet implements OKMDash
 	}
 
 	@Override
+	public List<GWTDashboardDocumentResult> getLastCreatedDocuments() throws OKMException {
+		log.debug("getLastCreatedDocuments()");
+		List<GWTDashboardDocumentResult> docList = new ArrayList<>();
+		updateSessionManager();
+
+		try {
+			for (DashboardDocumentResult dashboardDocumentResult : OKMDashboard.getInstance().getLastCreatedDocuments(null)) {
+				docList.add(GWTUtil.copy(dashboardDocumentResult));
+			}
+		} catch (RepositoryException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Repository), e.getMessage());
+		} catch (DatabaseException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Database), e.getMessage());
+		} catch (PrincipalAdapterException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_PrincipalAdapter), e.getMessage());
+		} catch (IOException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_IO), e.getMessage());
+		} catch (ParseException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Parse), e.getMessage());
+		} catch (NoSuchGroupException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_NoSuchGroup), e.getMessage());
+		} catch (AccessDeniedException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_AccessDenied), e.getMessage());
+		} catch (PathNotFoundException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_PathNotFound), e.getMessage());
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_General), e.getMessage());
+		}
+
+		log.debug("getLastCreatedDocuments: {}", docList);
+		return docList;
+	}
+
+	@Override
+	public List<GWTDashboardFolderResult> getLastCreatedFolders() throws OKMException {
+		log.debug("getLastCreatedFolders()");
+		List<GWTDashboardFolderResult> folderList = new ArrayList<>();
+		updateSessionManager();
+
+		try {
+			for (DashboardFolderResult dashboardFolderResult : OKMDashboard.getInstance().getLastCreatedFolders(null)) {
+				folderList.add(GWTUtil.copy(dashboardFolderResult));
+			}
+		} catch (RepositoryException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Repository), e.getMessage());
+		} catch (DatabaseException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Database), e.getMessage());
+		} catch (PrincipalAdapterException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_PrincipalAdapter), e.getMessage());
+		} catch (IOException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_IO), e.getMessage());
+		} catch (ParseException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_Parse), e.getMessage());
+		} catch (NoSuchGroupException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_NoSuchGroup), e.getMessage());
+		} catch (AccessDeniedException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_AccessDenied), e.getMessage());
+		} catch (PathNotFoundException e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_PathNotFound), e.getMessage());
+		} catch (Exception e) {
+			log.error(e.getMessage(), e);
+			throw new OKMException(ErrorCode.get(ErrorCode.ORIGIN_OKMDashboardService, ErrorCode.CAUSE_General), e.getMessage());
+		}
+
+		log.debug("getLastCreatedFolders: {}", folderList);
+		return folderList;
+	}
+
+	@Override
 	public List<GWTDashboardDocumentResult> getUserLastImportedMailAttachments() throws OKMException {
 		log.debug("getUserLastImportedMailAttachments()");
 		List<GWTDashboardDocumentResult> docList = new ArrayList<>();
